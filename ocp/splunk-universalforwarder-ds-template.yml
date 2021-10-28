@@ -16,7 +16,7 @@ parameters:
   value: "admin123"
   required: true
 - name: SPLUNK_PASS4SYMMKEY
-  value: "dpaas123"
+  value: "admin123"
   required: true
 - name: SPLUNK_CMD
   value: "add monitor /host/var/log/"
