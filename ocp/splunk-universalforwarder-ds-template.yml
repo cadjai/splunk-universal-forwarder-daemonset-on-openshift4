@@ -1,0 +1,192 @@
+apiVersion: template.openshift.io/v1 
+kind: Template
+metadata:
+  name: ${SPLUNK_FORWARDER_APPLICATION}-ds-template
+parameters: 
+- name: SPLUNK_START_ARGS 
+  value: "--accept-license"
+  required: true
+- name: SPLUNK_USER
+  value: "root"
+  required: true
+- name: SPLUNK_GROUP
+  value: "root"
+  required: true
+- name: SPLUNK_PASSWORD 
+  value: "admin123"
+  required: true
+- name: SPLUNK_PASS4SYMMKEY
+  value: "dpaas123"
+  required: true
+- name: SPLUNK_CMD
+  value: "add monitor /host/var/log/"
+  required: true
+- name: SPLUNK_ROLE 
+  value: "splunk_universal_forwarder" 
+  required: true
+- name: SPLUNK_SERVER_USER
+  value: "admin"
+  required: true
+- name: SPLUNK_SERVER_PASSWORD
+  value: "admin123"
+  required: true
+- name: TARGET_SERVER
+  value: ""
+  required: true
+- name: TARGET_SERVER_PORT
+  value: "" 
+  required: true
+- name: SPLUNK_FORWARDER_NAMESPACE
+  value: "splunk-universalforwarder"
+  required: true
+- name: SPLUNK_FORWARDER_APPLICATION
+  value: "splunk-universalforwarder"
+  required: true
+- name: SPLUNK_FORWARDER_IMAGE
+  required: true
+  value: ""
+- name: SPLUNK_OUTPUTS_CONF_MOUNT_PATH
+  value: "/opt/splunkforwarder/etc/system/local/outputs.conf"
+  required: true
+objects:
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${SPLUNK_FORWARDER_APPLICATION}-config
+    namespace: ${SPLUNK_FORWARDER_APPLICATION} 
+  data:
+    outputs.conf: |+
+      [indexAndForward]
+      index = false
+
+      [tcpout]
+      defaultGroup = default-autolb-group
+      
+      [tcpout-server://${TARGET_SERVER}:${TARGET_SERVER_PORT}]
+
+      [tcpout:default-autolb-group]
+      disabled = false
+      server =${TARGET_SERVER}:${TARGET_SERVER_PORT} 
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: ${SPLUNK_FORWARDER_APPLICATION}-privileged 
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: system:openshift:scc:privileged
+  subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: ${SPLUNK_FORWARDER_APPLICATION}
+
+- apiVersion: apps/v1 
+  kind: DaemonSet
+  metadata:
+    name: ${SPLUNK_FORWARDER_APPLICATION}-daemonset
+    namespace: ${SPLUNK_FORWARDER_APPLICATION} 
+    labels:
+      app: ${SPLUNK_FORWARDER_APPLICATION}-daemonset 
+  spec:
+    selector:
+        matchLabels:
+          app: ${SPLUNK_FORWARDER_APPLICATION}-daemonset 
+    template:
+      metadata:
+        labels:
+          app: ${SPLUNK_FORWARDER_APPLICATION}-daemonset 
+      spec:
+        nodeSelector: 
+          kubernetes.io/os: linux
+        containers:
+        - image: ${SPLUNK_FORWARDER_IMAGE} 
+          imagePullPolicy: Always 
+          name: ${SPLUNK_FORWARDER_APPLICATION}
+          env:
+          - name: SPLUNK_START_ARGS 
+            value: "${SPLUNK_START_ARGS}"
+          - name: SPLUNK_PASSWORD
+            value: "${SPLUNK_PASSWORD}"
+          - name: SPLUNK_USER
+            value: "${SPLUNK_USER}"
+          - name: SPLUNK_GROUP
+            value: "${SPLUNK_GROUP}"
+          - name: SPLUNK_CMD
+            value: "${SPLUNK_CMD}"
+          - name: SPLUNK_ROLE 
+            value: "${SPLUNK_ROLE}"
+          - name: SPLUNK_SERVER_USER 
+            value: "${SPLUNK_SERVER_USER}"
+          - name: SPLUNK_SERVER_PASSWORD 
+            value: "${SPLUNK_SERVER_PASSWORD}"
+          - name: SERVER_NAME 
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: HOSTNAME 
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: SPLUNK_HOSTNAME 
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: HOST_IP 
+            valueFrom:
+              fieldRef:
+                fieldPath: status.hostIP
+          - name: POD_IP 
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: POD_NAME 
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          ports:
+          - containerPort: 8088 
+            protocol: TCP
+          - containerPort: 8089
+            protocol: TCP
+          - containerPort: 9997
+            protocol: TCP
+          resources: {}
+          securityContext:
+            runAsUser: 0 
+            runAsGroup: 0
+          terminationMessagePath: /dev/termination-log
+          volumeMounts:
+          - mountPath: /host
+            name: host
+          - mountPath: ${SPLUNK_OUTPUTS_CONF_MOUNT_PATH} 
+            name: ${SPLUNK_FORWARDER_APPLICATION}-config-volume
+            subPath: outputs.conf
+        dnsPolicy: ClusterFirst
+        enableServiceLinks: true
+        hostNetwork: true
+        hostPID: true
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        serviceAccount: default
+        securityContext: {}
+        terminationGracePeriodSeconds: 10
+        tolerations:
+        - operator: Exists
+        volumes:
+        - hostPath:
+            path: /
+            type: Directory
+          name: host
+        - configMap:
+            defaultMode: 420 
+            name: ${SPLUNK_FORWARDER_APPLICATION}-config 
+            items:
+            - key: outputs.conf
+              path: outputs.conf
+          name: ${SPLUNK_FORWARDER_APPLICATION}-config-volume
+        updateStrategy:
+          rollingUpdate:
+            maxUnavailable: 1
+          type: RollingUpdate
+

@@ -1,0 +1,87 @@
+- name: ' Deploy and configure Splunk universal forwarder  | install-and-configure-splunk-universalforwarder.yml'
+  hosts: localhost
+  become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+    - 'vault.yml'
+    - 'global.yml'
+  vars:
+    module: "deploy-daemonset"
+    ansible_name_module: "Deploy Splunk Universal Forwarder | {{ module }}"
+
+  pre_tasks:
+    - name: Install required pip library
+      pip:
+        name: openshift
+        state: present
+
+    - name: Ensure Proper Python dependency is installed for Openshift
+      python_requirements_facts:
+        dependencies: 
+          - openshift
+          - requests 
+
+    - name: Authenticate with the API
+      command: >
+        {{ openshift_cli }} login \
+          --token {{ ocp_cluster_token }} \
+          --insecure-skip-tls-verify=true {{ ocp_cluster_console_url }}:{{ ocp_cluster_console_port | d('6443', true) }}
+      when:
+        - ocp_cluster_token is defined and ocp_cluster_token != ""
+      register: login_out
+
+    - name: Authenticate with the API
+      command: >
+        {{ openshift_cli }} login \
+          -u {{ ocp_cluster_user }} \
+          -p {{ ocp_cluster_user_password }} \
+          --insecure-skip-tls-verify=true {{ ocp_cluster_console_url }}:{{ ocp_cluster_console_port | d('6443', true) }}
+      register: login_out
+
+  tasks:
+    - name: '{{ ansible_name_module }} | Create Splunk Universal Forwarder Namespace'
+      block:
+        ##### Adding this to bypass restrictions on creating project with names starting with openshift  #####
+        - name: '{{ ansible_name_module }} |  Create splunk universal forwarder Namespace'
+          command: >
+            {{ openshift_cli }} create namespace '{{ splunk_uf_namespace }}'
+          failed_when: "splunk_uf_ns_created.rc >=1 and not ' already exists' in splunk_uf_ns_created.stderr"
+          when:
+            - "'openshift' in splunk_uf_namespace"
+          register: splunk_uf_ns_created
+
+        - name: '{{ ansible_name_module }} |  Create splunk universal forwarder Namespace'
+          command: >
+            {{ openshift_cli }} new-project '{{ splunk_uf_namespace }}' \
+              --display-name='{{ splunk_uf_namespace_description }}' \
+              --description='{{ splunk_uf_namespace_description }}'
+          failed_when: "splunk_uf_ns_created.rc >=1 and not ' already exists' in splunk_uf_ns_created.stderr"
+          when:
+            - "not 'openshift' in splunk_uf_namespace"
+          register: splunk_uf_ns_created
+
+
+    - name: '{{ ansible_name_module }} | Configure splunk universal forwarder '
+      block:
+        - name: '{{ ansible_name_module }} | Create Splunk Universal Forwarder template'
+          command: "{{ openshift_cli }} create -f {{ splunk_uf_template_path }} -n {{ splunk_uf_namespace }}"
+          failed_when: "splunk_uf_template_created.rc >=1 and not ' already exists' in splunk_uf_template_created.stderr"
+          register: splunk_uf_template_created
+
+        - name: '{{ ansible_name_module }} | shell | Process splunk universal forwarder template'
+          shell: >
+            {{ openshift_cli }} process -f {{ splunk_uf_template_path }} \
+            -p SPLUNK_FORWARDER_APPLICATION='{{ splunk_uf_application_name }}' \
+            -p SPLUNK_FORWARDER_NAMESPACE={{ splunk_uf_namespace }} \
+            -p SPLUNK_PASSWORD={{ splunk_uf_password }} \
+            -p SPLUNK_PASS4SYMMKEY={{ splunk_uf_password }} \
+            -p SPLUNK_ROLE={{ splunk_uf_role }} \
+            -p SPLUNK_FORWARDER_IMAGE={{ splunk_uf_image }} \
+            -p SPLUNK_OUTPUTS_CONF_MOUNT_PATH={{ splunk_uf_output_cong_mount_path }} \
+            -p TARGET_SERVER={{ splunk_uf_indexer_server }} \
+            -p TARGET_SERVER_PORT={{ splunk_uf_indexer_port }} \
+            -n {{ splunk_uf_namespace }} \
+            | oc apply -f -
+          register: splunk_uf_ds_created
+
