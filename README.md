@@ -50,7 +50,7 @@ Finally before running the playbook make sure to set and update the variables as
 Playbooks
 ---------
 To run the main playbook use the ansible-playbook command as follows
-`ansible-plabook install-and-configure-splunk-universalforwarder.yml`
+`ansible-plabook --ask-vault-pass install-and-configure-splunk-universalforwarder.yml -vvv`
 
 
 License
