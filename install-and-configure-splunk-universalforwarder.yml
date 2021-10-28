@@ -64,11 +64,6 @@
 
     - name: '{{ ansible_name_module }} | Configure splunk universal forwarder '
       block:
-        - name: '{{ ansible_name_module }} | Create Splunk Universal Forwarder template'
-          command: "{{ openshift_cli }} create -f {{ splunk_uf_template_path }} -n {{ splunk_uf_namespace }}"
-          failed_when: "splunk_uf_template_created.rc >=1 and not ' already exists' in splunk_uf_template_created.stderr"
-          register: splunk_uf_template_created
-
         - name: '{{ ansible_name_module }} | shell | Process splunk universal forwarder template'
           shell: >
             {{ openshift_cli }} process -f {{ splunk_uf_template_path }} \
