@@ -48,6 +48,12 @@ parameters:
 - name: SPLUNK_OUTPUTS_CONF_MOUNT_PATH
   value: "/opt/splunkforwarder/etc/system/local/outputs.conf"
   required: true
+- name: SPLUNK_INPUTS_CONF_MOUNT_PATH
+  value: "/opt/splunkforwarder/etc/system/local/inputs.conf"
+  required: true
+- name: INDEX_NAME 
+  value: "myindex"
+  required: true
 objects:
 - apiVersion: v1
   kind: ConfigMap
@@ -67,6 +73,11 @@ objects:
       [tcpout:default-autolb-group]
       disabled = false
       server =${TARGET_SERVER}:${TARGET_SERVER_PORT} 
+
+    inputs.conf: |+
+      [splunktcp://9997]
+      diasbled = 0
+      index = ${INDEX_NAME}
 
 - apiVersion: rbac.authorization.k8s.io/v1
   kind: ClusterRoleBinding
@@ -162,6 +173,9 @@ objects:
           - mountPath: ${SPLUNK_OUTPUTS_CONF_MOUNT_PATH} 
             name: ${SPLUNK_FORWARDER_APPLICATION}-config-volume
             subPath: outputs.conf
+          - mountPath: ${SPLUNK_INPUTS_CONF_MOUNT_PATH} 
+            name: ${SPLUNK_FORWARDER_APPLICATION}-config-volume
+            subPath: inputs.conf
         dnsPolicy: ClusterFirst
         enableServiceLinks: true
         hostNetwork: true
@@ -184,6 +198,8 @@ objects:
             items:
             - key: outputs.conf
               path: outputs.conf
+            - key: inputs.conf
+              path: inputs.conf
           name: ${SPLUNK_FORWARDER_APPLICATION}-config-volume
         updateStrategy:
           rollingUpdate:
